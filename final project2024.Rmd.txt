@@ -1,0 +1,180 @@
+---
+title: "Final Project 2024"
+author: "Marc Romero"
+date: "2024-05-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+summary(housing_data_2016_2017)
+```
+
+```{r}
+install.packages("dplyr")
+library("dplyr")
+df = housing_data_2016_2017
+
+df_imputed = df %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), mean(., na.rm = TRUE), .)))
+
+print(df_imputed)
+
+```
+
+```{r}
+na_counts_dplyr = df %>%
+  summarise(across(everything(), ~ sum(is.na(.))))
+print("dplyr - Counts of NA values in each column:")
+print(na_counts_dplyr)
+
+```
+
+
+```{r}
+
+# Regression tree modeling
+
+install.packages("rpart")
+install.packages("rpart.plot")
+
+library(rpart)
+library(rpart.plot)
+
+df$coop_condo = as.factor(df$coop_condo)
+df$fuel_type = as.factor(df$fuel_type)
+df$kitchen_type = as.factor(df$kitchen_type)
+
+df = df[, !names(df) %in% "HITId"]
+df = df[, !names(df) %in% "HITTypeId"]
+df = df[, !names(df) %in% "Title"]
+
+df$sale_price = as.numeric(df$sale_price)
+df$total_taxes = as.numeric(df$total_taxes)
+
+
+impute_mean = function(x) {
+  x[is.na(x)] = mean(x, na.rm = TRUE)
+  return(x)
+}
+
+df$total_taxes = impute_mean(df$total_taxes)
+df$sq_footage = impute_mean(df$sq_footage)
+df$sale_price = impute_mean(df$sale_price)
+df$num_bedrooms = impute_mean(df$num_bedrooms)
+df$walk_score = impute_mean(df$walk_score)
+df$num_full_bathrooms = impute_mean(df$num_full_bathrooms)
+df$num_total_rooms = impute_mean(df$num_total_rooms)
+df$pct_tax_deductibl = impute_mean(df$pct_tax_deductibl)
+
+df_imputed = df %>%
+  mutate(across(everything(), ~ ifelse(is.na(.), 0, .)))
+
+na_counts_imputed = sapply(df_imputed, function(x) sum(is.na(x)))
+print("Counts of NA values after imputation:")
+print(na_counts_imputed)
+
+
+housing = rpart(sq_footage ~ num_bedrooms + walk_score + num_full_bathrooms  + num_total_rooms + pct_tax_deductibl + total_taxes, data = df, method = "anova")
+
+
+
+print(summary(housing))
+
+rpart.plot(housing)
+
+
+```
+
+
+```{r}
+#linear modeling
+
+df_imputed = df %>%
+  mutate(across(everything(), ~ ifelse(is.na(.), 0, .)))
+
+na_counts_imputed = sapply(df_imputed, function(x) sum(is.na(x)))
+print("Counts of NA values after imputation:")
+print(na_counts_imputed)l
+linear_model = lm(sq_footage ~ num_bedrooms + walk_score + num_full_bathrooms + num_total_rooms + pct_tax_deductibl + total_taxes, data = df_imputed)
+
+
+summary(linear_model)
+
+
+predictions = predict(linear_model, df_imputed)
+
+
+print(predictions)
+```
+
+```{r}
+
+library(randomForest)
+
+random_forest_model = randomForest(sq_footage ~ num_bedrooms + walk_score + num_full_bathrooms + num_total_rooms + pct_tax_deductibl + total_taxes, data = df_imputed, importance = TRUE)
+
+print(random_forest_model)
+
+predictions = predict(random_forest_model, df_imputed)
+
+print(predictions)
+
+
+```
+
+```{r}
+
+df_imputed = df %>%
+  mutate(across(where(is.character), as.numeric),
+         across(where(is.factor), as.numeric),
+         across(where(is.numeric), ~ ifelse(is.na(.), 0, .)))
+
+calculate_metrics = function(actual, predicted) {
+  mse = mean((actual - predicted)^2)
+  rmse = sqrt(mse)
+  r_squared = 1 - sum((actual - predicted)^2) / sum((actual - mean(actual))^2)
+  return(list(MSE = mse, RMSE = rmse, R_squared = r_squared))
+}
+
+linear_model = lm(sq_footage ~ num_bedrooms + walk_score + num_full_bathrooms + num_total_rooms + pct_tax_deductibl + total_taxes, data = df_imputed)
+linear_predictions = predict(linear_model, df_imputed)
+
+
+library(rpart)
+tree_model = rpart(sq_footage ~ num_bedrooms + walk_score + num_full_bathrooms + num_total_rooms + pct_tax_deductibl + total_taxes, data = df_imputed, method = "anova")
+tree_predictions = predict(tree_model, df_imputed)
+
+
+library(randomForest)
+random_forest_model = randomForest(sq_footage ~ num_bedrooms + walk_score + num_full_bathrooms + num_total_rooms + pct_tax_deductibl + total_taxes, data = df_imputed, importance = TRUE)
+random_forest_predictions = predict(random_forest_model, df_imputed)
+
+linear_metrics = calculate_metrics(df_imputed$sq_footage, linear_predictions)
+print("Linear Regression Metrics:")
+print(linear_metrics)
+
+
+tree_metrics = calculate_metrics(df_imputed$sq_footage, tree_predictions)
+print("Regression Tree Metrics:")
+print(tree_metrics)
+
+
+random_forest_metrics = calculate_metrics(df_imputed$sq_footage, random_forest_predictions)
+print("Random Forest Metrics:")
+print(random_forest_metrics)
+
+comparison = data.frame(
+  Model = c("Linear Regression", "Regression Tree", "Random Forest"),
+  MSE = c(linear_metrics$MSE, tree_metrics$MSE, random_forest_metrics$MSE),
+  RMSE = c(linear_metrics$RMSE, tree_metrics$RMSE, random_forest_metrics$RMSE),
+  R_squared = c(linear_metrics$R_squared, tree_metrics$R_squared, random_forest_metrics$R_squared)
+)
+
+print("Model Comparison:")
+print(comparison)
+```
+
